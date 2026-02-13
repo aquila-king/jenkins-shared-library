@@ -46,7 +46,7 @@ def call(Map config = [:]) {
             stage('Docker Push') {
                 steps {
                     withCredentials([usernamePassword(
-                        credentialsId: config.dockerCreds,
+                        credentialsId: config.docker-Cred,
                         usernameVariable: 'DOCKER_USER',
                         passwordVariable: 'DOCKER_PASS'
                     )]) {
