@@ -1,30 +1,35 @@
+// vars/deployMicroservice.groovy
 def call(Map config = [:]) {
 
     pipeline {
         agent any
 
+        // Tools: use configured names or fallback to known defaults
         tools {
-            jdk config.jdk ?: 'jdk17'
-            maven config.maven ?: 'mvn'
+            jdk config.jdk ?: 'jdk17'      // <-- must match JDK name in Jenkins Global Tool Config
+            maven config.maven ?: 'mvn'    // <-- must match Maven name in Jenkins Global Tool Config
         }
 
         stages {
 
-            stage('Prepare') {
+            stage('Prepare Environment') {
                 steps {
                     script {
-                        // compute dynamic values
+                        // Assign dynamic environment variables safely
                         env.IMAGE_NAME = config.imageName ?: 'kuunyangna/myapp'
                         env.NAMESPACE  = config.namespace ?: 'default'
                         env.RELEASE    = config.helmRelease ?: env.IMAGE_NAME
                         env.BRANCH     = config.branch ?: 'main'
+                        env.DOCKER_CREDS = config.dockerCreds ?: 'docker-cred'
+                        env.HELM_CHART = config.helmChart ?: './helm-chart'
+                        env.REPO_URL   = config.repoUrl ?: error("repoUrl must be provided in config")
                     }
                 }
             }
 
             stage('Checkout') {
                 steps {
-                    git branch: env.BRANCH, url: config.repoUrl
+                    git branch: env.BRANCH, url: env.REPO_URL
                 }
             }
 
@@ -42,16 +47,14 @@ def call(Map config = [:]) {
 
             stage('Docker Build') {
                 steps {
-                    sh """
-                        docker build -t ${env.IMAGE_NAME}:${env.BUILD_NUMBER} .
-                    """
+                    sh "docker build -t ${env.IMAGE_NAME}:${env.BUILD_NUMBER} ."
                 }
             }
 
             stage('Docker Push') {
                 steps {
                     withCredentials([usernamePassword(
-                        credentialsId: config.dockerCreds ?: 'docker-cred',
+                        credentialsId: env.DOCKER_CREDS,
                         usernameVariable: 'DOCKER_USER',
                         passwordVariable: 'DOCKER_PASS'
                     )]) {
@@ -66,7 +69,7 @@ def call(Map config = [:]) {
             stage('Deploy with Helm') {
                 steps {
                     sh """
-                        helm upgrade --install ${env.RELEASE} ${config.helmChart} \
+                        helm upgrade --install ${env.RELEASE} ${env.HELM_CHART} \
                           --namespace ${env.NAMESPACE} \
                           --set image.repository=${env.IMAGE_NAME} \
                           --set image.tag=${env.BUILD_NUMBER}
