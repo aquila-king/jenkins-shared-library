@@ -3,25 +3,28 @@ def call(Map config = [:]) {
     pipeline {
         agent any
 
-        // Tools configured in Jenkins
         tools {
-            jdk config.jdk ?: 'jdk'      // use your installed JDK tool name
-            maven config.maven ?: 'mvn'  // use your installed Maven tool name
-        }
-
-        // Environment variables
-        environment {
-            IMAGE_NAME = config.imageName ?: 'kuunyangna/myapp'
-            NAMESPACE  = config.namespace ?: 'default'
-            RELEASE    = config.helmRelease ?: "${config.imageName ?: 'myapp'}"
-            BRANCH     = config.branch ?: 'main'
+            jdk config.jdk ?: 'jdk'
+            maven config.maven ?: 'mvn'
         }
 
         stages {
 
+            stage('Prepare') {
+                steps {
+                    script {
+                        // compute dynamic values
+                        env.IMAGE_NAME = config.imageName ?: 'kuunyangna/myapp'
+                        env.NAMESPACE  = config.namespace ?: 'default'
+                        env.RELEASE    = config.helmRelease ?: env.IMAGE_NAME
+                        env.BRANCH     = config.branch ?: 'main'
+                    }
+                }
+            }
+
             stage('Checkout') {
                 steps {
-                    git branch: BRANCH, url: config.repoUrl
+                    git branch: env.BRANCH, url: config.repoUrl
                 }
             }
 
