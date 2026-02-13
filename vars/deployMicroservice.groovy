@@ -4,7 +4,7 @@ def call(Map config = [:]) {
         agent any
 
         tools {
-            jdk config.jdk ?: 'jdk'
+            jdk config.jdk ?: 'jdk17'
             maven config.maven ?: 'mvn'
         }
 
