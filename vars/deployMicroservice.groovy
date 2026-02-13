@@ -1,27 +1,27 @@
-// vars/deployMicroservice.groovy
 def call(Map config = [:]) {
 
     pipeline {
         agent any
 
+        // Tools configured in Jenkins
         tools {
-            jdk config.jdk ?: 'jdk17'
-            maven config.maven ?: 'mvn'
+            jdk config.jdk ?: 'jdk'      // use your installed JDK tool name
+            maven config.maven ?: 'mvn'  // use your installed Maven tool name
         }
 
-        // Use string interpolation to make environment block valid
+        // Environment variables
         environment {
-            IMAGE_NAME = "${config.imageName ?: 'default-image'}"
-            NAMESPACE  = "${config.namespace ?: 'default'}"
-            RELEASE    = "${config.helmRelease ?: config.imageName ?: 'default-release'}"
-            BRANCH     = "${config.branch ?: 'main'}"
+            IMAGE_NAME = config.imageName ?: 'kuunyangna/myapp'
+            NAMESPACE  = config.namespace ?: 'default'
+            RELEASE    = config.helmRelease ?: "${config.imageName ?: 'myapp'}"
+            BRANCH     = config.branch ?: 'main'
         }
 
         stages {
 
             stage('Checkout') {
                 steps {
-                    git branch: "${BRANCH}", url: "${config.repoUrl ?: error('repoUrl must be provided')}"
+                    git branch: BRANCH, url: config.repoUrl
                 }
             }
 
@@ -40,7 +40,7 @@ def call(Map config = [:]) {
             stage('Docker Build') {
                 steps {
                     sh """
-                        docker build -t ${IMAGE_NAME}:${env.BUILD_NUMBER} .
+                        docker build -t ${env.IMAGE_NAME}:${env.BUILD_NUMBER} .
                     """
                 }
             }
@@ -48,13 +48,13 @@ def call(Map config = [:]) {
             stage('Docker Push') {
                 steps {
                     withCredentials([usernamePassword(
-                        credentialsId: "${config.dockerCreds ?: 'docker-cred'}",
+                        credentialsId: config.dockerCreds ?: 'docker-cred',
                         usernameVariable: 'DOCKER_USER',
                         passwordVariable: 'DOCKER_PASS'
                     )]) {
                         sh """
                             echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
-                            docker push ${IMAGE_NAME}:${env.BUILD_NUMBER}
+                            docker push ${env.IMAGE_NAME}:${env.BUILD_NUMBER}
                         """
                     }
                 }
@@ -63,9 +63,9 @@ def call(Map config = [:]) {
             stage('Deploy with Helm') {
                 steps {
                     sh """
-                        helm upgrade --install ${RELEASE} ${config.helmChart ?: './helm'} \
-                          --namespace ${NAMESPACE} \
-                          --set image.repository=${IMAGE_NAME} \
+                        helm upgrade --install ${env.RELEASE} ${config.helmChart} \
+                          --namespace ${env.NAMESPACE} \
+                          --set image.repository=${env.IMAGE_NAME} \
                           --set image.tag=${env.BUILD_NUMBER}
                     """
                 }
@@ -74,10 +74,10 @@ def call(Map config = [:]) {
 
         post {
             success {
-                echo "Pipeline completed successfully for ${IMAGE_NAME}!"
+                echo "Pipeline completed successfully for ${env.IMAGE_NAME}!"
             }
             failure {
-                echo "Pipeline failed for ${IMAGE_NAME}. Check logs!"
+                echo "Pipeline failed for ${env.IMAGE_NAME}. Check logs!"
             }
         }
     }
