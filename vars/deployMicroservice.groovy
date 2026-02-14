@@ -6,8 +6,8 @@ def call(Map config = [:]) {
 
         // Tools: use configured names or fallback to known defaults
         tools {
-            jdk config.jdk ?: 'jdk'      // <-- must match JDK name in Jenkins Global Tool Config
-            maven config.maven ?: 'mvn'    // <-- must match Maven name in Jenkins Global Tool Config
+            jdk config.jdk ?: 'jdk'      
+            maven config.maven ?: 'mvn'   
         }
 
         stages {
