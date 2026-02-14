@@ -4,7 +4,6 @@ def call(Map config = [:]) {
     pipeline {
         agent any
 
-        // Tools: use configured names or fallback to known defaults
         tools {
             jdk config.jdk ?: 'jdk'      
             maven config.maven ?: 'mvn'   
@@ -15,7 +14,6 @@ def call(Map config = [:]) {
             stage('Prepare Environment') {
                 steps {
                     script {
-                        // Assign dynamic environment variables safely
                         env.IMAGE_NAME = config.imageName ?: 'kuunyangna/myapp'
                         env.NAMESPACE  = config.namespace ?: 'default'
                         env.RELEASE    = config.helmRelease ?: env.IMAGE_NAME
@@ -66,32 +64,33 @@ def call(Map config = [:]) {
                 }
             }
 
-   stage('Deploy with Helm') {
-    steps {
-        withCredentials([[
-            $class: 'AmazonWebServicesCredentialsBinding',
-            credentialsId: 'aws-cred'
-        ]]) {
-            withEnv(["PATH+TOOLS=/usr/local/bin"]) {
-                sh """
-                    set -e
+            stage('Deploy with Helm') {
+                steps {
+                    withCredentials([[
+                        $class: 'AmazonWebServicesCredentialsBinding',
+                        credentialsId: 'aws-cred'
+                    ]]) {
+                        withEnv(["PATH+TOOLS=/usr/local/bin"]) {
+                            sh """
+                                set -e
+                                aws sts get-caller-identity
+                                aws eks update-kubeconfig --region us-east-2 --name aquila-cluster
+                                kubectl get nodes
 
-                    aws sts get-caller-identity
-                    aws eks update-kubeconfig --region us-east-2 --name aquila-cluster
-                    kubectl get nodes
+                                helm upgrade --install ${env.RELEASE} ${env.HELM_CHART} \
+                                  --namespace ${env.NAMESPACE} \
+                                  --create-namespace \
+                                  --set image.repository=${env.IMAGE_NAME} \
+                                  --set image.tag=${env.BUILD_NUMBER}
 
-                    helm upgrade --install ${env.RELEASE} ${env.HELM_CHART} \
-                      --namespace ${env.NAMESPACE} \
-                      --create-namespace \
-                      --set image.repository=${env.IMAGE_NAME} \
-                      --set image.tag=${env.BUILD_NUMBER}
-
-                    kubectl rollout status deployment/${env.RELEASE} -n ${env.NAMESPACE}
-                """
+                                kubectl rollout status deployment/${env.RELEASE} -n ${env.NAMESPACE}
+                            """
+                        }
+                    }
+                }
             }
-        }
-    }
-}
+
+        } // end stages
 
         post {
             success {
@@ -101,5 +100,6 @@ def call(Map config = [:]) {
                 echo "Pipeline failed for ${env.IMAGE_NAME}. Check logs!"
             }
         }
-    }
-}
+
+    } // end pipeline
+} // end call
