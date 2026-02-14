@@ -67,16 +67,30 @@ def call(Map config = [:]) {
             }
 
             stage('Deploy with Helm') {
-                steps {
-                    sh """
-                        helm upgrade --install ${env.RELEASE} ${env.HELM_CHART} \
-                          --namespace ${env.NAMESPACE} \
-                          --set image.repository=${env.IMAGE_NAME} \
-                          --set image.tag=${env.BUILD_NUMBER}
-                    """
-                }
-            }
+    steps {
+        withCredentials([[
+            $class: 'AmazonWebServicesCredentialsBinding',
+            credentialsId: 'aws-cred'
+        ]]) {
+            sh """
+                set -e
+
+                aws eks update-kubeconfig \
+                  --region us-east-2 \
+                  --name aquila-cluster
+
+                kubectl get nodes
+
+                helm upgrade --install ${env.RELEASE} ${env.HELM_CHART} \
+                  --namespace ${env.NAMESPACE} \
+                  --create-namespace \
+                  --set image.repository=${env.IMAGE_NAME} \
+                  --set image.tag=${env.BUILD_NUMBER}
+            """
         }
+    }
+}
+
 
         post {
             success {
