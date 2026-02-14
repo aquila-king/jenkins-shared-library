@@ -66,31 +66,32 @@ def call(Map config = [:]) {
                 }
             }
 
-            stage('Deploy with Helm') {
+   stage('Deploy with Helm') {
     steps {
         withCredentials([[
             $class: 'AmazonWebServicesCredentialsBinding',
             credentialsId: 'aws-cred'
         ]]) {
-            sh """
-                set -e
+            withEnv(["PATH+TOOLS=/usr/local/bin"]) {
+                sh """
+                    set -e
 
-                aws eks update-kubeconfig \
-                  --region us-east-2 \
-                  --name aquila-cluster
+                    aws sts get-caller-identity
+                    aws eks update-kubeconfig --region us-east-2 --name aquila-cluster
+                    kubectl get nodes
 
-                kubectl get nodes
+                    helm upgrade --install ${env.RELEASE} ${env.HELM_CHART} \
+                      --namespace ${env.NAMESPACE} \
+                      --create-namespace \
+                      --set image.repository=${env.IMAGE_NAME} \
+                      --set image.tag=${env.BUILD_NUMBER}
 
-                helm upgrade --install ${env.RELEASE} ${env.HELM_CHART} \
-                  --namespace ${env.NAMESPACE} \
-                  --create-namespace \
-                  --set image.repository=${env.IMAGE_NAME} \
-                  --set image.tag=${env.BUILD_NUMBER}
-            """
+                    kubectl rollout status deployment/${env.RELEASE} -n ${env.NAMESPACE}
+                """
+            }
         }
     }
 }
-
 
         post {
             success {
