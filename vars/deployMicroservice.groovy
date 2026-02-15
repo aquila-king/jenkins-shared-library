@@ -22,6 +22,7 @@ def call(Map config = [:]) {
                         env.HELM_CHART = config.helmChart ?: './helm-chart'
                         env.REPO_URL   = config.repoUrl ?: error("repoUrl must be provided in config")
                         env.CURRENT_COLOR = env.CURRENT_COLOR ?: 'green' // default for first run
+                        env.JAR_NAME = "" // Will be set after Maven build
                     }
                 }
             }
@@ -35,6 +36,17 @@ def call(Map config = [:]) {
             stage('Build') {
                 steps {
                     sh "mvn clean package -DskipTests=false"
+                    script {
+                        // Find the JAR that Maven produced
+                        env.JAR_NAME = sh(
+                            script: "ls target/*.jar | head -n 1",
+                            returnStdout: true
+                        ).trim()
+                        if (!env.JAR_NAME) {
+                            error "Maven did not produce a JAR!"
+                        }
+                        echo "Built JAR: ${env.JAR_NAME}"
+                    }
                 }
             }
 
@@ -46,7 +58,11 @@ def call(Map config = [:]) {
 
             stage('Docker Build') {
                 steps {
-                    sh "docker build -t ${env.IMAGE_NAME}:${env.BUILD_NUMBER} ."
+                    script {
+                        // Copy the JAR to the Docker build context (current directory)
+                        sh "cp ${env.JAR_NAME} app.jar"
+                        sh "docker build -t ${env.IMAGE_NAME}:${env.BUILD_NUMBER} ."
+                    }
                 }
             }
 
