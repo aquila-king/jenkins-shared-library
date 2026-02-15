@@ -53,10 +53,17 @@ def call(Map config = [:]) {
             stage('Trivy Scan') {
                 steps {
                     script {
-                        echo "Scanning Docker image for vulnerabilities..."
                         sh """
-                            # Trivy must already be installed on the EC2 agent
-                            trivy image --exit-code 1 --severity CRITICAL,HIGH ${env.IMAGE_NAME}:${env.BUILD_NUMBER}
+                            echo "Scanning Docker image for vulnerabilities..."
+                            # Make sure cache folder exists
+                            mkdir -p /home/jenkins/trivy-cache
+
+                            # Run Trivy as Docker container with cache volume
+                            docker run --rm \
+                              -v /var/run/docker.sock:/var/run/docker.sock \
+                              -v /home/jenkins/trivy-cache:/root/.cache/ \
+                              aquasec/trivy image \
+                              --exit-code 1 --severity CRITICAL,HIGH ${env.IMAGE_NAME}:${env.BUILD_NUMBER}
                         """
                     }
                 }
@@ -101,7 +108,7 @@ def call(Map config = [:]) {
                                   --wait --timeout 5m
                             """
 
-                            // Simple smoke test: ensure pods are running
+                            // Smoke test: ensure pods are running
                             def status = sh(
                                 script: "kubectl get pods -n ${env.NAMESPACE} -l app=${releaseName} -o jsonpath='{.items[*].status.phase}' | grep -v Running || true",
                                 returnStatus: true
@@ -113,7 +120,7 @@ def call(Map config = [:]) {
                                 error "Deployment failed and rolled back!"
                             } else {
                                 echo "Deployment successful! Switching service to ${releaseName}"
-                                // Update Kubernetes Service selector to point to new color
+                                # Update Kubernetes Service selector to point to new color
                                 sh "kubectl patch svc ${env.RELEASE}-svc -n ${env.NAMESPACE} -p '{\"spec\":{\"selector\":{\"app\":\"${releaseName}\"}}}'"
                                 env.CURRENT_COLOR = newColor
                             }
