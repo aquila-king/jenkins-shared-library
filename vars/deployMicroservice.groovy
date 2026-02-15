@@ -11,7 +11,7 @@ def call(Map config = [:]) {
 
         stages {
 
-            stage('Prepare Environment to eks') {
+            stage('Prepare Environment to EKS') {
                 steps {
                     script {
                         env.IMAGE_NAME = config.imageName ?: 'kuunyangna/myapp'
@@ -22,7 +22,7 @@ def call(Map config = [:]) {
                         env.HELM_CHART = config.helmChart ?: './helm-chart'
                         env.REPO_URL   = config.repoUrl ?: error("repoUrl must be provided in config")
                         env.CURRENT_COLOR = env.CURRENT_COLOR ?: 'green' // default for first run
-                        env.MAVEN_PROJECT_DIR = config.mavenProjectDir ?: '.' // default to current dir
+                        env.MAVEN_PROJECT_DIR = config.mavenProjectDir ?: '.' // Maven project folder
                     }
                 }
             }
@@ -53,7 +53,21 @@ def call(Map config = [:]) {
                 steps {
                     dir(env.MAVEN_PROJECT_DIR) {
                         script {
-                            // Build Docker inside Maven project directory so target/*.jar exists
+                            echo "Building Docker image from Maven project directory: ${env.MAVEN_PROJECT_DIR}"
+
+                            // Ensure the JAR exists before Docker build
+                            def jarFile = sh(
+                                script: "ls target/*.jar | head -n 1",
+                                returnStdout: true
+                            ).trim()
+
+                            if (!jarFile) {
+                                error "Maven did not produce a JAR in target/*.jar!"
+                            }
+
+                            echo "Found JAR: ${jarFile}"
+
+                            // Build Docker image
                             sh "docker build -t ${env.IMAGE_NAME}:${env.BUILD_NUMBER} ."
                         }
                     }
@@ -75,7 +89,7 @@ def call(Map config = [:]) {
                 }
             }
 
-            stage('Deploy with Helm to eks using Blue/Green') {
+            stage('Deploy with Helm to EKS using Blue/Green') {
                 steps {
                     withCredentials([usernamePassword(
                         credentialsId: 'aws-cred',
