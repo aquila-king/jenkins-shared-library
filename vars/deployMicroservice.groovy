@@ -14,13 +14,13 @@ def call(Map config = [:]) {
             stage('Prepare Environment') {
                 steps {
                     script {
-                        env.IMAGE_NAME  = config.imageName ?: 'kuunyangna/myapp'
-                        env.NAMESPACE   = config.namespace ?: 'default'
-                        env.RELEASE     = config.helmRelease ?: env.IMAGE_NAME
-                        env.BRANCH      = config.branch ?: 'main'
+                        env.IMAGE_NAME   = config.imageName ?: 'kuunyangna/myapp'
+                        env.NAMESPACE    = config.namespace ?: 'default'
+                        env.RELEASE      = config.helmRelease ?: env.IMAGE_NAME
+                        env.BRANCH       = config.branch ?: 'main'
                         env.DOCKER_CREDS = config.dockerCreds ?: 'docker-cred'
-                        env.HELM_CHART  = config.helmChart ?: './helm-chart'
-                        env.REPO_URL    = config.repoUrl ?: error("repoUrl must be provided")
+                        env.HELM_CHART   = config.helmChart ?: './helm-chart'
+                        env.REPO_URL     = config.repoUrl ?: error("repoUrl must be provided")
                         env.CURRENT_COLOR = 'green' // default start color
                     }
                 }
@@ -54,16 +54,12 @@ def call(Map config = [:]) {
                 steps {
                     script {
                         sh """
-                            echo "Scanning Docker image for vulnerabilities..."
-                            # Make sure cache folder exists
                             mkdir -p /home/jenkins/trivy-cache
-
-                            # Run Trivy as Docker container with cache volume
-                            docker run --rm \
-                              -v /var/run/docker.sock:/var/run/docker.sock \
-                              -v /home/jenkins/trivy-cache:/root/.cache/ \
-                              aquasec/trivy image \
-                              --exit-code 1 --severity CRITICAL,HIGH ${env.IMAGE_NAME}:${env.BUILD_NUMBER}
+                            docker run --rm \\
+                                -v /var/run/docker.sock:/var/run/docker.sock \\
+                                -v /home/jenkins/trivy-cache:/root/.cache/ \\
+                                aquasec/trivy image \\
+                                --exit-code 1 --severity CRITICAL,HIGH ${env.IMAGE_NAME}:${env.BUILD_NUMBER}
                         """
                     }
                 }
@@ -100,15 +96,15 @@ def call(Map config = [:]) {
                                 export AWS_DEFAULT_REGION=us-east-2
                                 aws eks update-kubeconfig --region us-east-2 --name aquila-cluster
 
-                                helm upgrade --install ${releaseName} ${env.HELM_CHART} \
-                                  --namespace ${env.NAMESPACE} \
-                                  --create-namespace \
-                                  --set image.repository=${env.IMAGE_NAME} \
-                                  --set image.tag=${env.BUILD_NUMBER} \
+                                helm upgrade --install ${releaseName} ${env.HELM_CHART} \\
+                                  --namespace ${env.NAMESPACE} \\
+                                  --create-namespace \\
+                                  --set image.repository=${env.IMAGE_NAME} \\
+                                  --set image.tag=${env.BUILD_NUMBER} \\
                                   --wait --timeout 5m
                             """
 
-                            // Smoke test: ensure pods are running
+                            // Simple smoke test: ensure pods are running
                             def status = sh(
                                 script: "kubectl get pods -n ${env.NAMESPACE} -l app=${releaseName} -o jsonpath='{.items[*].status.phase}' | grep -v Running || true",
                                 returnStatus: true
@@ -120,7 +116,7 @@ def call(Map config = [:]) {
                                 error "Deployment failed and rolled back!"
                             } else {
                                 echo "Deployment successful! Switching service to ${releaseName}"
-                                # Update Kubernetes Service selector to point to new color
+                                // Update Kubernetes Service selector to point to new color
                                 sh "kubectl patch svc ${env.RELEASE}-svc -n ${env.NAMESPACE} -p '{\"spec\":{\"selector\":{\"app\":\"${releaseName}\"}}}'"
                                 env.CURRENT_COLOR = newColor
                             }
