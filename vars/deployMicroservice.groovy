@@ -5,8 +5,8 @@ def call(Map config = [:]) {
         agent any
 
         tools {
-            jdk config.jdk ?: 'jdk'      
-            maven config.maven ?: 'mvn'   
+            jdk config.jdk ?: 'jdk'
+            maven config.maven ?: 'mvn'
         }
 
         stages {
@@ -14,13 +14,14 @@ def call(Map config = [:]) {
             stage('Prepare Environment') {
                 steps {
                     script {
-                        env.IMAGE_NAME   = config.imageName ?: 'kuunyangna/myapp'
-                        env.NAMESPACE    = config.namespace ?: 'default'
-                        env.RELEASE      = config.helmRelease ?: env.IMAGE_NAME
-                        env.BRANCH       = config.branch ?: 'main'
+                        env.IMAGE_NAME  = config.imageName ?: 'kuunyangna/myapp'
+                        env.NAMESPACE   = config.namespace ?: 'default'
+                        env.RELEASE     = config.helmRelease ?: env.IMAGE_NAME
+                        env.BRANCH      = config.branch ?: 'main'
                         env.DOCKER_CREDS = config.dockerCreds ?: 'docker-cred'
-                        env.HELM_CHART   = config.helmChart ?: './helm-chart'
-                        env.REPO_URL     = config.repoUrl ?: error("repoUrl must be provided in config")
+                        env.HELM_CHART  = config.helmChart ?: './helm-chart'
+                        env.REPO_URL    = config.repoUrl ?: error("repoUrl must be provided")
+                        env.CURRENT_COLOR = 'green' // default start color
                     }
                 }
             }
@@ -52,9 +53,13 @@ def call(Map config = [:]) {
             stage('Trivy Scan') {
                 steps {
                     script {
-                        echo "Scanning Docker image for vulnerabilities..."
                         sh """
-                            trivy image --exit-code 1 --severity CRITICAL,HIGH ${env.IMAGE_NAME}:${env.BUILD_NUMBER} || true
+                            # Install Trivy if not present
+                            command -v trivy >/dev/null 2>&1 || wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_\$(uname -s)_\$(uname -m).tar.gz -O trivy.tar.gz && \
+                            tar zxvf trivy.tar.gz trivy && mv trivy /usr/local/bin/ && rm trivy.tar.gz
+
+                            echo "Scanning Docker image for vulnerabilities..."
+                            trivy image --exit-code 1 --severity CRITICAL,HIGH ${env.IMAGE_NAME}:${env.BUILD_NUMBER}
                         """
                     }
                 }
@@ -99,7 +104,7 @@ def call(Map config = [:]) {
                                   --wait --timeout 5m
                             """
 
-                            // Simple smoke test
+                            // Simple smoke test: ensure pods are running
                             def status = sh(
                                 script: "kubectl get pods -n ${env.NAMESPACE} -l app=${releaseName} -o jsonpath='{.items[*].status.phase}' | grep -v Running || true",
                                 returnStatus: true
@@ -113,7 +118,6 @@ def call(Map config = [:]) {
                                 echo "Deployment successful! Switching service to ${releaseName}"
                                 // Update Kubernetes Service selector to point to new color
                                 sh "kubectl patch svc ${env.RELEASE}-svc -n ${env.NAMESPACE} -p '{\"spec\":{\"selector\":{\"app\":\"${releaseName}\"}}}'"
-                                // Update CURRENT_COLOR env var for next run
                                 env.CURRENT_COLOR = newColor
                             }
                         }
