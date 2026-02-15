@@ -53,12 +53,9 @@ def call(Map config = [:]) {
             stage('Trivy Scan') {
                 steps {
                     script {
+                        echo "Scanning Docker image for vulnerabilities..."
                         sh """
-                            # Install Trivy if not present
-                            command -v trivy >/dev/null 2>&1 || wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_\$(uname -s)_\$(uname -m).tar.gz -O trivy.tar.gz && \
-                            tar zxvf trivy.tar.gz trivy && mv trivy /usr/local/bin/ && rm trivy.tar.gz
-
-                            echo "Scanning Docker image for vulnerabilities..."
+                            # Trivy must already be installed on the EC2 agent
                             trivy image --exit-code 1 --severity CRITICAL,HIGH ${env.IMAGE_NAME}:${env.BUILD_NUMBER}
                         """
                     }
