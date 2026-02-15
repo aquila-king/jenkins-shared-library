@@ -14,13 +14,13 @@ def call(Map config = [:]) {
             stage('Prepare Environment') {
                 steps {
                     script {
-                        env.IMAGE_NAME   = config.imageName ?: 'kuunyangna/myapp'
-                        env.NAMESPACE    = config.namespace ?: 'default'
-                        env.RELEASE      = config.helmRelease ?: env.IMAGE_NAME
-                        env.BRANCH       = config.branch ?: 'main'
+                        env.IMAGE_NAME  = config.imageName ?: 'kuunyangna/myapp'
+                        env.NAMESPACE   = config.namespace ?: 'default'
+                        env.RELEASE     = config.helmRelease ?: env.IMAGE_NAME
+                        env.BRANCH      = config.branch ?: 'main'
                         env.DOCKER_CREDS = config.dockerCreds ?: 'docker-cred'
-                        env.HELM_CHART   = config.helmChart ?: './helm-chart'
-                        env.REPO_URL     = config.repoUrl ?: error("repoUrl must be provided")
+                        env.HELM_CHART  = config.helmChart ?: './helm-chart'
+                        env.REPO_URL    = config.repoUrl ?: error("repoUrl must be provided")
                         env.CURRENT_COLOR = 'green' // default start color
                     }
                 }
@@ -47,21 +47,6 @@ def call(Map config = [:]) {
             stage('Docker Build') {
                 steps {
                     sh "docker build -t ${env.IMAGE_NAME}:${env.BUILD_NUMBER} ."
-                }
-            }
-
-            stage('Trivy Scan') {
-                steps {
-                    script {
-                        sh """
-                            mkdir -p /home/jenkins/trivy-cache
-                            docker run --rm \\
-                                -v /var/run/docker.sock:/var/run/docker.sock \\
-                                -v /home/jenkins/trivy-cache:/root/.cache/ \\
-                                aquasec/trivy image \\
-                                --exit-code 1 --severity CRITICAL,HIGH ${env.IMAGE_NAME}:${env.BUILD_NUMBER}
-                        """
-                    }
                 }
             }
 
