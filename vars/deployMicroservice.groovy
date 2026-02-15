@@ -11,7 +11,7 @@ def call(Map config = [:]) {
 
         stages {
 
-            stage('Prepare Environment to EKS') {
+            stage('Prepare Environment for EKS') {
                 steps {
                     script {
                         env.IMAGE_NAME = config.imageName ?: 'kuunyangna/myapp'
@@ -88,7 +88,7 @@ def call(Map config = [:]) {
                 }
             }
 
-            stage('Deploy with Helm to EKS using Blue/Green') {
+            stage('Deploy to EKS with Helm') {
                 steps {
                     withCredentials([usernamePassword(
                         credentialsId: 'aws-cred',
@@ -96,27 +96,11 @@ def call(Map config = [:]) {
                         passwordVariable: 'AWS_SECRET_ACCESS_KEY'
                     )]) {
                         script {
-
                             sh """
                                 export AWS_DEFAULT_REGION=us-east-2
                                 aws eks update-kubeconfig --region us-east-2 --name aquila-cluster
-                            """
 
-                            // Detect current active color
-                            def activeColor = sh(
-                                script: "kubectl get svc ${env.RELEASE}-svc -n ${env.NAMESPACE} -o jsonpath='{.spec.selector.app}' 2>/dev/null | awk -F'-' '{print \$NF}' || echo ''",
-                                returnStdout: true
-                            ).trim()
-
-                            def newColor = (activeColor == 'blue') ? 'green' : 'blue'
-                            def releaseName = "${env.RELEASE}-${newColor}"
-
-                            echo "Active color: ${activeColor}"
-                            echo "Deploying new color: ${newColor}"
-
-                            // Deploy new color with Helm
-                            sh """
-                                helm upgrade --install ${releaseName} ${env.HELM_CHART} \
+                                helm upgrade --install ${env.RELEASE} ${env.HELM_CHART} \
                                   --namespace ${env.NAMESPACE} \
                                   --create-namespace \
                                   --set image.repository=${env.IMAGE_NAME} \
@@ -124,25 +108,19 @@ def call(Map config = [:]) {
                                   --wait --timeout 5m
                             """
 
-                            // Simple smoke test: ensure pods are Running
+                            // Simple smoke test
                             def status = sh(
-                                script: "kubectl get pods -n ${env.NAMESPACE} -l app=${releaseName} -o jsonpath='{.items[*].status.phase}' | grep -v Running || true",
+                                script: "kubectl get pods -n ${env.NAMESPACE} -l app=${env.RELEASE} -o jsonpath='{.items[*].status.phase}' | grep -v Running || true",
                                 returnStatus: true
                             )
 
                             if (status != 0) {
-                                echo "Deployment failed. Removing failed release..."
-                                sh "helm uninstall ${releaseName} -n ${env.NAMESPACE} || true"
-                                error "Deployment failed!"
+                                echo "Deployment failed, rolling back..."
+                                sh "helm rollback ${env.RELEASE} 0 --namespace ${env.NAMESPACE}"
+                                error "Deployment failed and rolled back!"
+                            } else {
+                                echo "Deployment successful!"
                             }
-
-                            echo "Deployment successful. Switching traffic..."
-
-                            // Patch stable Service to point to new release
-                            sh """
-                                kubectl patch svc ${env.RELEASE}-svc -n ${env.NAMESPACE} \
-                                -p '{\"spec\":{\"selector\":{\"app\":\"${releaseName}\"}}}'
-                            """
                         }
                     }
                 }
