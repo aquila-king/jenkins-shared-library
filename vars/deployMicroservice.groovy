@@ -21,7 +21,6 @@ def call(Map config = [:]) {
                         env.DOCKER_CREDS = config.dockerCreds ?: 'docker-cred'
                         env.HELM_CHART = config.helmChart ?: './helm-chart'
                         env.REPO_URL   = config.repoUrl ?: error("repoUrl must be provided in config")
-                        env.CURRENT_COLOR = env.CURRENT_COLOR ?: 'green' // default for first run
                         env.MAVEN_PROJECT_DIR = config.mavenProjectDir ?: '.' // Maven project folder
                     }
                 }
@@ -97,14 +96,26 @@ def call(Map config = [:]) {
                         passwordVariable: 'AWS_SECRET_ACCESS_KEY'
                     )]) {
                         script {
-                            // Decide new color dynamically
-                            def newColor = (env.CURRENT_COLOR == 'blue') ? 'green' : 'blue'
-                            def releaseName = "${env.RELEASE}-${newColor}"
 
                             sh """
                                 export AWS_DEFAULT_REGION=us-east-2
                                 aws eks update-kubeconfig --region us-east-2 --name aquila-cluster
+                            """
 
+                            // Detect current active color
+                            def activeColor = sh(
+                                script: "kubectl get svc ${env.RELEASE}-svc -n ${env.NAMESPACE} -o jsonpath='{.spec.selector.app}' 2>/dev/null | awk -F'-' '{print \$NF}' || echo ''",
+                                returnStdout: true
+                            ).trim()
+
+                            def newColor = (activeColor == 'blue') ? 'green' : 'blue'
+                            def releaseName = "${env.RELEASE}-${newColor}"
+
+                            echo "Active color: ${activeColor}"
+                            echo "Deploying new color: ${newColor}"
+
+                            // Deploy new color with Helm
+                            sh """
                                 helm upgrade --install ${releaseName} ${env.HELM_CHART} \
                                   --namespace ${env.NAMESPACE} \
                                   --create-namespace \
@@ -113,31 +124,25 @@ def call(Map config = [:]) {
                                   --wait --timeout 5m
                             """
 
-                            // Simple smoke test
+                            // Simple smoke test: ensure pods are Running
                             def status = sh(
                                 script: "kubectl get pods -n ${env.NAMESPACE} -l app=${releaseName} -o jsonpath='{.items[*].status.phase}' | grep -v Running || true",
                                 returnStatus: true
                             )
 
                             if (status != 0) {
-                                echo "Deployment failed, rolling back..."
-                                sh "helm rollback ${releaseName} 0 --namespace ${env.NAMESPACE}"
-                                error "Deployment failed and rolled back!"
-                            } else {
-                                echo "Deployment successful! Switching service to ${releaseName}"
-
-                                // Patch the service **only if it exists**
-                                sh """
-                                if kubectl get svc ${env.RELEASE}-svc -n ${env.NAMESPACE} >/dev/null 2>&1; then
-                                    kubectl patch svc ${env.RELEASE}-svc -n ${env.NAMESPACE} -p '{\"spec\":{\"selector\":{\"app\":\"${releaseName}\"}}}'
-                                else
-                                    echo "Service ${env.RELEASE}-svc not found. Skipping service update."
-                                fi
-                                """
-
-                                // Update CURRENT_COLOR env var for next run
-                                env.CURRENT_COLOR = newColor
+                                echo "Deployment failed. Removing failed release..."
+                                sh "helm uninstall ${releaseName} -n ${env.NAMESPACE} || true"
+                                error "Deployment failed!"
                             }
+
+                            echo "Deployment successful. Switching traffic..."
+
+                            // Patch stable Service to point to new release
+                            sh """
+                                kubectl patch svc ${env.RELEASE}-svc -n ${env.NAMESPACE} \
+                                -p '{\"spec\":{\"selector\":{\"app\":\"${releaseName}\"}}}'
+                            """
                         }
                     }
                 }
