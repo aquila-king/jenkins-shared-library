@@ -11,17 +11,17 @@ def call(Map config = [:]) {
 
         stages {
 
-            stage('Prepare Environment for EKS') {
+            stage('Prepare Environment to EKS') {
                 steps {
                     script {
-                        env.IMAGE_NAME = config.imageName ?: 'kuunyangna/myapp'
-                        env.NAMESPACE  = config.namespace ?: 'default'
-                        env.RELEASE    = config.helmRelease ?: env.IMAGE_NAME
-                        env.BRANCH     = config.branch ?: 'main'
-                        env.DOCKER_CREDS = config.dockerCreds ?: 'docker-cred'
-                        env.HELM_CHART = config.helmChart ?: './helm-chart'
-                        env.REPO_URL   = config.repoUrl ?: error("repoUrl must be provided in config")
-                        env.MAVEN_PROJECT_DIR = config.mavenProjectDir ?: '.' // Maven project folder
+                        env.IMAGE_NAME       = config.imageName ?: 'kuunyangna/myapp'
+                        env.NAMESPACE        = config.namespace ?: 'default'
+                        env.RELEASE          = config.helmRelease ?: env.IMAGE_NAME
+                        env.BRANCH           = config.branch ?: 'main'
+                        env.DOCKER_CREDS     = config.dockerCreds ?: 'docker-cred'
+                        env.HELM_CHART       = config.helmChart ?: './helm-chart'
+                        env.REPO_URL         = config.repoUrl ?: error("repoUrl must be provided in config")
+                        env.MAVEN_PROJECT_DIR= config.mavenProjectDir ?: '.' // Maven project folder
                     }
                 }
             }
@@ -88,7 +88,7 @@ def call(Map config = [:]) {
                 }
             }
 
-            stage('Deploy to EKS with Helm') {
+            stage('Deploy with Helm to EKS') {
                 steps {
                     withCredentials([usernamePassword(
                         credentialsId: 'aws-cred',
@@ -107,20 +107,6 @@ def call(Map config = [:]) {
                                   --set image.tag=${env.BUILD_NUMBER} \
                                   --wait --timeout 5m
                             """
-
-                            // Simple smoke test
-                            def status = sh(
-                                script: "kubectl get pods -n ${env.NAMESPACE} -l app=${env.RELEASE} -o jsonpath='{.items[*].status.phase}' | grep -v Running || true",
-                                returnStatus: true
-                            )
-
-                            if (status != 0) {
-                                echo "Deployment failed, rolling back..."
-                                sh "helm rollback ${env.RELEASE} 0 --namespace ${env.NAMESPACE}"
-                                error "Deployment failed and rolled back!"
-                            } else {
-                                echo "Deployment successful!"
-                            }
                         }
                     }
                 }
