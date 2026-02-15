@@ -73,7 +73,7 @@ def call(Map config = [:]) {
         )]) {
             sh """
                 export AWS_DEFAULT_REGION=us-east-2
-                aws sts get-caller-identity
+
                 aws eks update-kubeconfig --region us-east-2 --name aquila-cluster
                 kubectl get nodes
 
@@ -81,9 +81,8 @@ def call(Map config = [:]) {
                   --namespace ${env.NAMESPACE} \
                   --create-namespace \
                   --set image.repository=${env.IMAGE_NAME} \
-                  --set image.tag=${env.BUILD_NUMBER}
-
-                kubectl rollout status deployment/${env.RELEASE} -n ${env.NAMESPACE}
+                  --set image.tag=${env.BUILD_NUMBER} \
+                  --wait
             """
         }
     }
