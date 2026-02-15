@@ -63,27 +63,48 @@ def call(Map config = [:]) {
                     }
                 }
             }
-
-           stage('Deploy with Helm') {
+stage('Deploy with Helm to eks with using Blue/Green') {
     steps {
         withCredentials([usernamePassword(
             credentialsId: 'aws-cred',
             usernameVariable: 'AWS_ACCESS_KEY_ID',
             passwordVariable: 'AWS_SECRET_ACCESS_KEY'
         )]) {
-            sh """
-                export AWS_DEFAULT_REGION=us-east-2
+            script {
+                // Decide new color dynamically
+                def newColor = (env.CURRENT_COLOR == 'blue') ? 'green' : 'blue'
+                def releaseName = "${env.RELEASE}-${newColor}"
 
-                aws eks update-kubeconfig --region us-east-2 --name aquila-cluster
-                kubectl get nodes
+                sh """
+                    export AWS_DEFAULT_REGION=us-east-2
+                    aws eks update-kubeconfig --region us-east-2 --name aquila-cluster
 
-                helm upgrade --install ${env.RELEASE} ${env.HELM_CHART} \
-                  --namespace ${env.NAMESPACE} \
-                  --create-namespace \
-                  --set image.repository=${env.IMAGE_NAME} \
-                  --set image.tag=${env.BUILD_NUMBER} \
-                  --wait
-            """
+                    helm upgrade --install ${releaseName} ${env.HELM_CHART} \
+                      --namespace ${env.NAMESPACE} \
+                      --create-namespace \
+                      --set image.repository=${env.IMAGE_NAME} \
+                      --set image.tag=${env.BUILD_NUMBER} \
+                      --wait --timeout 5m
+                """
+
+                // Simple smoke test
+                def status = sh(
+                    script: "kubectl get pods -n ${env.NAMESPACE} -l app=${releaseName} -o jsonpath='{.items[*].status.phase}' | grep -v Running || true",
+                    returnStatus: true
+                )
+
+                if (status != 0) {
+                    echo "Deployment failed, rolling back..."
+                    sh "helm rollback ${releaseName} 0 --namespace ${env.NAMESPACE}"
+                    error "Deployment failed and rolled back!"
+                } else {
+                    echo "Deployment successful! Switching service to ${releaseName}"
+                    // Optionally, update Kubernetes Service selector to point to new color
+                    sh "kubectl patch svc ${env.RELEASE}-svc -n ${env.NAMESPACE} -p '{\"spec\":{\"selector\":{\"app\":\"${releaseName}\"}}}'"
+                    // Update CURRENT_COLOR env var for next run
+                    env.CURRENT_COLOR = newColor
+                }
+            }
         }
     }
 }
