@@ -101,11 +101,12 @@ def call(Map config = [:]) {
                     aws eks update-kubeconfig --region us-east-2 --name aquila-cluster
 
                     helm upgrade --install ${env.RELEASE} ${env.HELM_CHART} \
-                      --namespace ${env.NAMESPACE} \
-                      --create-namespace \
-                      --set image.repository=${env.IMAGE_NAME} \
-                      --set image.tag=${env.BUILD_NUMBER} \
-                      --wait --timeout 5m
+  --namespace ${env.NAMESPACE} \
+  --create-namespace \
+  --set image.repository=${env.IMAGE_NAME} \
+  --set image.tag=${env.BUILD_NUMBER} \
+  --wait --timeout 5m
+
                 """
             }
         }
