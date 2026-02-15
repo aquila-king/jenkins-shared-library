@@ -11,7 +11,7 @@ def call(Map config = [:]) {
 
         stages {
 
-            stage('Prepare Environment') {
+            stage('Prepare Environment to eks') {
                 steps {
                     script {
                         env.IMAGE_NAME = config.imageName ?: 'kuunyangna/myapp'
