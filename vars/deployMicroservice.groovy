@@ -89,28 +89,29 @@ def call(Map config = [:]) {
             }
 
             stage('Deploy with Helm to EKS') {
-                steps {
-                    withCredentials([usernamePassword(
-                        credentialsId: 'aws-cred',
-                        usernameVariable: 'AWS_ACCESS_KEY_ID',
-                        passwordVariable: 'AWS_SECRET_ACCESS_KEY'
-                    )]) {
-                        script {
-                            sh """
-                                export AWS_DEFAULT_REGION=us-east-2
-                                aws eks update-kubeconfig --region us-east-2 --name aquila-cluster
+    steps {
+        withCredentials([usernamePassword(
+            credentialsId: 'aws-cred',
+            usernameVariable: 'AWS_ACCESS_KEY_ID',
+            passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+        )]) {
+            script {
+                sh """
+                    export AWS_DEFAULT_REGION=us-east-2
+                    aws eks update-kubeconfig --region us-east-2 --name aquila-cluster
 
-                                helm upgrade --install ${env.RELEASE} ${env.HELM_CHART} \
-                                  --namespace ${env.NAMESPACE} \
-                                  --create-namespace \
-                                  --set image.repository=${env.IMAGE_NAME} \
-                                  --set image.tag=${env.BUILD_NUMBER} \
-                                  --wait --timeout 5m
-                            """
-                        }
-                    }
-                }
+                    helm upgrade --install ${env.RELEASE} ${env.HELM_CHART} \
+                      --namespace ${env.NAMESPACE} \
+                      --create-namespace \
+                      --set image.repository=${env.IMAGE_NAME} \
+                      --set image.tag=${env.BUILD_NUMBER} \
+                      --wait --timeout 5m
+                """
             }
+        }
+    }
+}
+
 
         } // end stages
 
