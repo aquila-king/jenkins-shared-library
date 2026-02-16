@@ -1,6 +1,3 @@
-// deployMicroservice.groovy
-// Usage in Jenkinsfile: deployMicroservice(namespace: 'auth', imageName: 'auth-service', repoUrl: 'https://github.com/...')
-
 def call(Map config) {
     pipeline {
         agent any
@@ -41,10 +38,9 @@ def call(Map config) {
 
             stage('Push Docker Image') {
                 steps {
-                    sh '''
-                        echo $DOCKER_CREDS_PSW | docker login -u $DOCKER_CREDS_USR --password-stdin
-                        docker push kuunyangna/${config.imageName}:v2
-                    '''
+                    withDockerRegistry([credentialsId: 'docker-cred', url: 'https://index.docker.io/v1/']) {
+                        sh "docker push kuunyangna/${config.imageName}:v2"
+                    }
                 }
             }
 
@@ -56,21 +52,18 @@ def call(Map config) {
                         passwordVariable: 'AWS_SECRET_ACCESS_KEY'
                     )]) {
                         sh """
-                            # Update kubeconfig to connect Jenkins to EKS
-                            aws eks update-kubeconfig --region us-east-2 --name aquila-cluster
+                            # Update kubeconfig to connect Jenkins to your EKS cluster
+                            aws eks update-kubeconfig --region us-east-2 --name ${config.clusterName}
 
-                            # Apply repo-specific Kubernetes manifests
-                            cd \$WORKSPACE
-                            kubectl apply -f k8-deployment.yaml -n ${config.namespace}
-                            kubectl apply -f k8-service.yaml -n ${config.namespace}
+                            # Apply Kubernetes manifests
+                            kubectl apply -f k8-deployment.yaml
+                            kubectl apply -f k8-service.yaml
 
-                            # Update deployment to new image
-                            kubectl set image deployment/${config.imageName}-deployment \
-                                ${config.imageName}-container=kuunyangna/${config.imageName}:v2 \
-                                -n ${config.namespace} --record
+                            # Update deployment to new Docker image
+                            kubectl set image deployment/myapp-deployment myapp-container=kuunyangna/${config.imageName}:v2 --record
 
-                            # Wait for rollout
-                            kubectl rollout status deployment/${config.imageName}-deployment -n ${config.namespace}
+                            # Wait for rollout to complete
+                            kubectl rollout status deployment/myapp-deployment
                         """
                     }
                 }
