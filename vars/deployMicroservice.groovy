@@ -1,4 +1,12 @@
 def call(Map config) {
+    /*
+     config = [
+        repoUrl   : 'https://github.com/aquila-king/order-service.java.git',
+        imageName : 'order-service',
+        namespace : 'order-namespace'
+     ]
+    */
+
     pipeline {
         agent any
 
@@ -20,7 +28,7 @@ def call(Map config) {
 
             stage('Checkout Code') {
                 steps {
-                    git branch: 'main', url: "${config.repoUrl}"
+                    git branch: 'main', url: config.repoUrl
                 }
             }
 
@@ -38,6 +46,7 @@ def call(Map config) {
 
             stage('Push Docker Image') {
                 steps {
+                  
                     withDockerRegistry([credentialsId: 'docker-cred', url: 'https://index.docker.io/v1/']) {
                         sh "docker push kuunyangna/${config.imageName}:v2"
                     }
@@ -52,18 +61,19 @@ def call(Map config) {
                         passwordVariable: 'AWS_SECRET_ACCESS_KEY'
                     )]) {
                         sh """
-                            # Update kubeconfig to connect Jenkins to your EKS cluster
-                            aws eks update-kubeconfig --region us-east-2 --name ${config.clusterName}
+                            # Update kubeconfig
+                            aws eks update-kubeconfig --region us-east-2 --name aquila-cluster
 
-                            # Apply Kubernetes manifests
+                            # Apply Kubernetes manifests in repo
+                            cd \$WORKSPACE
                             kubectl apply -f k8-deployment.yaml
                             kubectl apply -f k8-service.yaml
 
-                            # Update deployment to new Docker image
-                            kubectl set image deployment/myapp-deployment myapp-container=kuunyangna/${config.imageName}:v2 --record
+                            # Update deployment with new image
+                            kubectl set image deployment/${config.imageName}-deployment ${config.imageName}-container=kuunyangna/${config.imageName}:v2 --record
 
                             # Wait for rollout to complete
-                            kubectl rollout status deployment/myapp-deployment
+                            kubectl rollout status deployment/${config.imageName}-deployment
                         """
                     }
                 }
