@@ -1,11 +1,12 @@
+// vars/deployMicroservice.groovy
 def call(Map config) {
-    /*
-     config = [
-        repoUrl   : 'https://github.com/aquila-king/order-service.java.git',
-        imageName : 'order-service',
-        namespace : 'order-namespace'
-     ]
-    */
+    if (!config.repoUrl || !config.imageName || !config.namespace) {
+        error "Please provide repoUrl, imageName, and namespace"
+    }
+
+    // Generate unique image tag using build number
+    def imageTag = "v${env.BUILD_NUMBER}"
+    def fullImage = "kuunyangna/${config.imageName}:${imageTag}"
 
     pipeline {
         agent any
@@ -21,35 +22,27 @@ def call(Map config) {
 
         stages {
             stage('Cleanup') {
-                steps {
-                    cleanWs()
-                }
+                steps { cleanWs() }
             }
 
             stage('Checkout Code') {
-                steps {
-                    git branch: 'main', url: config.repoUrl
-                }
+                steps { git branch: 'main', url: config.repoUrl }
             }
 
             stage('Unit Testing') {
-                steps {
-                    sh 'mvn test'
-                }
+                steps { sh 'mvn test' }
             }
 
             stage('Build Docker Image') {
-                steps {
-                    sh "docker build -t kuunyangna/${config.imageName}:v2 ."
-                }
+                steps { sh "docker build -t ${fullImage} ." }
             }
 
             stage('Push Docker Image') {
                 steps {
-                  
-                    withDockerRegistry([credentialsId: 'docker-cred', url: 'https://index.docker.io/v1/']) {
-                        sh "docker push kuunyangna/${config.imageName}:v2"
-                    }
+                    sh """
+                        echo \$DOCKER_CREDS_PSW | docker login -u \$DOCKER_CREDS_USR --password-stdin
+                        docker push ${fullImage}
+                    """
                 }
             }
 
@@ -61,19 +54,9 @@ def call(Map config) {
                         passwordVariable: 'AWS_SECRET_ACCESS_KEY'
                     )]) {
                         sh """
-                            # Update kubeconfig
                             aws eks update-kubeconfig --region us-east-2 --name aquila-cluster
-
-                            # Apply Kubernetes manifests in repo
-                            cd \$WORKSPACE
-                            kubectl apply -f k8-deployment.yaml
-                            kubectl apply -f k8-service.yaml
-
-                            # Update deployment with new image
-                            kubectl set image deployment/${config.imageName}-deployment ${config.imageName}-container=kuunyangna/${config.imageName}:v2 --record
-
-                            # Wait for rollout to complete
-                            kubectl rollout status deployment/${config.imageName}-deployment
+                            kubectl set image deployment/${config.imageName}-deployment ${config.imageName}-container=${fullImage} -n ${config.namespace} --record
+                            kubectl rollout status deployment/${config.imageName}-deployment -n ${config.namespace}
                         """
                     }
                 }
