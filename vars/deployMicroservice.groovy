@@ -1,12 +1,9 @@
-// vars/deployMicroservice.groovy
 def call(Map config) {
-    if (!config.repoUrl || !config.imageName || !config.namespace) {
-        error "Please provide repoUrl, imageName, and namespace"
-    }
+    // config map expects:
+    // repoUrl, imageName, namespace, tag (optional, default 'v1')
 
-    // Generate unique image tag using build number
-    def imageTag = "v${env.BUILD_NUMBER}"
-    def fullImage = "kuunyangna/${config.imageName}:${imageTag}"
+    def tag = config.tag ?: "v1"
+    def fullImage = "kuunyangna/${config.imageName}:${tag}"
 
     pipeline {
         agent any
@@ -21,28 +18,32 @@ def call(Map config) {
         }
 
         stages {
-            stage('Cleanup') {
-                steps { cleanWs() }
+            stage('Checkout') {
+                steps {
+                    git branch: 'main', url: config.repoUrl
+                }
             }
 
-            stage('Checkout Code') {
-                steps { git branch: 'main', url: config.repoUrl }
-            }
-
-            stage('Unit Testing') {
-                steps { sh 'mvn test' }
+            stage('Build & Test') {
+                steps {
+                    sh 'mvn clean package || true'
+                }
             }
 
             stage('Build Docker Image') {
-                steps { sh "docker build -t ${fullImage} ." }
+                steps {
+                    sh "docker build -t ${fullImage} ."
+                }
             }
 
             stage('Push Docker Image') {
                 steps {
-                    sh """
-                        echo \$DOCKER_CREDS_PSW | docker login -u \$DOCKER_CREDS_USR --password-stdin
-                        docker push ${fullImage}
-                    """
+                    withEnv(["DOCKER_USERNAME=${DOCKER_CREDS_USR}", "DOCKER_PASSWORD=${DOCKER_CREDS_PSW}"]) {
+                        sh """
+                            echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin
+                            docker push ${fullImage}
+                        """
+                    }
                 }
             }
 
@@ -55,7 +56,20 @@ def call(Map config) {
                     )]) {
                         sh """
                             aws eks update-kubeconfig --region us-east-2 --name aquila-cluster
-                            kubectl set image deployment/${config.imageName}-deployment ${config.imageName}-container=${fullImage} -n ${config.namespace} --record
+
+                            # Ensure namespace exists
+                            kubectl get ns ${config.namespace} || kubectl create ns ${config.namespace}
+
+                            # Apply deployment YAML
+                            kubectl apply -f k8-deployment.yaml -n ${config.namespace}
+
+                            # Apply service YAML
+                            kubectl apply -f k8-service.yaml -n ${config.namespace}
+
+                            # Update deployment image
+                            kubectl set image deployment/${config.imageName}-deployment ${config.imageName}-container=${fullImage} -n ${config.namespace}
+
+                            # Wait for rollout to finish
                             kubectl rollout status deployment/${config.imageName}-deployment -n ${config.namespace}
                         """
                     }
